@@ -19,6 +19,7 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
     include: {
       member: true,
       user: true,
+      order: { select: { orderNo: true } },
       saleItems: { include: { product: { include: { unit: true } } } },
     },
   });
@@ -75,6 +76,12 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
             <span>Kasir</span>
             <span>{sale.user?.username ?? "-"}</span>
           </div>
+          {sale.order && (
+            <div className="flex justify-between">
+              <span>Pesanan</span>
+              <span>{sale.order.orderNo}</span>
+            </div>
+          )}
         </div>
 
         <ul className="space-y-2 border-t border-dashed border-slate-300 pt-3">
