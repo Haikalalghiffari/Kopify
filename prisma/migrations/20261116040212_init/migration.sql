@@ -1,4 +1,4 @@
-﻿-- CreateEnum
+-- CreateEnum
 CREATE TYPE "Role" AS ENUM ('ADMIN', 'KASIR', 'ANGGOTA');
 
 -- CreateEnum
@@ -385,4 +385,3 @@ ALTER TABLE "import_templates" ADD CONSTRAINT "import_templates_created_by_fkey"
 
 -- AddForeignKey
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
