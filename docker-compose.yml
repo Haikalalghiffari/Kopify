@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: koperasi_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: koperasi_user
+      POSTGRES_PASSWORD: koperasi_pass
+      POSTGRES_DB: koperasi_db
+      TZ: Asia/Jakarta
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U koperasi_user -d koperasi_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - koperasi_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: koperasi_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://koperasi_user:koperasi_pass@postgres:5432/koperasi_db?schema=public"
+      NEXTAUTH_URL: "http://localhost:3000"
+      NEXTAUTH_SECRET: "docker_compose_super_secret_key_change_in_prod"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - koperasi_net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  koperasi_net:
+    driver: bridge

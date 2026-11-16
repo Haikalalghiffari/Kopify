@@ -1,0 +1,345 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  ADMIN
+  KASIR
+  ANGGOTA
+}
+
+enum MemberStatus {
+  AKTIF
+  NONAKTIF
+}
+
+enum StockMovementType {
+  IMPORT
+  PURCHASE
+  SALE
+  ORDER_FULFILLED
+  ADJUSTMENT
+  RETURN
+}
+
+enum OrderStatus {
+  DIAJUKAN
+  DIKONFIRMASI
+  DISIAPKAN
+  SIAP_DIAMBIL
+  SELESAI
+  DIBATALKAN
+  DITOLAK
+}
+
+enum PaymentMethod {
+  TUNAI
+  TRANSFER
+  BON
+  LAINNYA
+}
+
+enum PaymentStatus {
+  LUNAS
+  BELUM_LUNAS
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum ImportStatus {
+  PENDING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         Role      @default(ANGGOTA)
+  memberId     String?   @unique @map("member_id")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relasi
+  member          Member?          @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  stockMovements  StockMovement[]  @relation("UserStockMovements")
+  salesCreated    Sale[]           @relation("UserSales")
+  importLogs      ImportLog[]      @relation("UserImportLogs")
+  importTemplates ImportTemplate[] @relation("UserImportTemplates")
+  auditLogs       AuditLog[]       @relation("UserAuditLogs")
+
+  @@map("users")
+}
+
+model Member {
+  id        String       @id @default(cuid())
+  memberNo  String       @unique @map("member_no")
+  name      String
+  nik       String?      @unique
+  address   String?
+  phone     String?
+  email     String?
+  joinedAt  DateTime     @default(now()) @map("joined_at")
+  status    MemberStatus @default(AKTIF)
+  deletedAt DateTime?    @map("deleted_at")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  // Relasi
+  user   User?
+  orders Order[]
+  sales  Sale[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("members")
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relasi
+  products Product[]
+
+  @@map("categories")
+}
+
+model Unit {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relasi
+  products Product[]
+
+  @@map("units")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("suppliers")
+}
+
+model Product {
+  id            String    @id @default(cuid())
+  sku           String    @unique
+  name          String
+  categoryId    String    @map("category_id")
+  unitId        String    @map("unit_id")
+  costPrice     Int       @default(0) @map("cost_price") // Dalam rupiah integer
+  sellPrice     Int       @default(0) @map("sell_price") // Dalam rupiah integer
+  stock         Int       @default(0)
+  reservedStock Int       @default(0) @map("reserved_stock")
+  minStock      Int       @default(5) @map("min_stock")
+  isActive      Boolean   @default(true) @map("is_active")
+  deletedAt     DateTime? @map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relasi
+  category       Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  unit           Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  stockMovements StockMovement[]
+  orderItems     OrderItem[]
+  saleItems      SaleItem[]
+
+  @@index([categoryId])
+  @@index([unitId])
+  @@index([stock])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("products")
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  productId   String            @map("product_id")
+  type        StockMovementType
+  qtyChange   Int               @map("qty_change") // Bisa positif (masuk) atau negatif (keluar)
+  stockBefore Int               @map("stock_before")
+  stockAfter  Int               @map("stock_after")
+  refType     String?           @map("ref_type") // e.g. "ORDER", "SALE", "ADJUSTMENT"
+  refId       String?           @map("ref_id")
+  note        String?
+  createdBy   String?           @map("created_by")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  // Relasi
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User?   @relation("UserStockMovements", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([type])
+  @@map("stock_movements")
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  orderNo      String      @unique @map("order_no") // Format: ORD-YYYYMMDD-XXXX
+  memberId     String      @map("member_id")
+  status       OrderStatus @default(DIAJUKAN)
+  note         String?
+  rejectReason String?     @map("reject_reason")
+  total        Int         @default(0) // Dalam rupiah integer
+  createdBy    String?     @map("created_by")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  // Relasi
+  member     Member      @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  orderItems OrderItem[]
+  sale       Sale?
+
+  @@index([memberId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String   @map("order_id")
+  productId String   @map("product_id")
+  qty       Int
+  unitPrice Int      @map("unit_price") // Dalam rupiah integer
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relasi
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model Sale {
+  id            String        @id @default(cuid())
+  saleNo        String        @unique @map("sale_no") // Format: SLS-YYYYMMDD-XXXX
+  orderId       String?       @unique @map("order_id")
+  memberId      String?       @map("member_id")
+  total         Int           @default(0) // Dalam rupiah integer
+  discount      Int           @default(0) // Dalam rupiah integer
+  paymentMethod PaymentMethod @default(TUNAI) @map("payment_method")
+  paymentStatus PaymentStatus @default(LUNAS) @map("payment_status")
+  status        SaleStatus    @default(COMPLETED)
+  soldAt        DateTime      @default(now()) @map("sold_at")
+  createdBy     String?       @map("created_by")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  // Relasi
+  order     Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  member    Member?    @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  user      User?      @relation("UserSales", fields: [createdBy], references: [id], onDelete: SetNull)
+  saleItems SaleItem[]
+
+  @@index([soldAt])
+  @@index([memberId])
+  @@index([status])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String   @id @default(cuid())
+  saleId    String   @map("sale_id")
+  productId String   @map("product_id")
+  qty       Int
+  unitPrice Int      @map("unit_price") // Dalam rupiah integer
+  costPrice Int      @map("cost_price") // Snapshot harga beli dalam rupiah integer
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relasi
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+model ImportLog {
+  id          String       @id @default(cuid())
+  type        String       // e.g. "MEMBERS", "PRODUCTS", "TRANSACTIONS"
+  filename    String
+  totalRows   Int          @default(0) @map("total_rows")
+  successRows Int          @default(0) @map("success_rows")
+  failedRows  Int          @default(0) @map("failed_rows")
+  status      ImportStatus @default(PENDING)
+  mappingJson Json?        @map("mapping_json")
+  createdBy   String?      @map("created_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  // Relasi
+  user User? @relation("UserImportLogs", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([createdAt])
+  @@map("import_logs")
+}
+
+model ImportTemplate {
+  id          String   @id @default(cuid())
+  type        String   // e.g. "MEMBERS", "PRODUCTS", "TRANSACTIONS"
+  name        String
+  mappingJson Json     @map("mapping_json")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relasi
+  user User? @relation("UserImportTemplates", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@map("import_templates")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  action     String   // e.g. "LOGIN", "CREATE_PRODUCT", "ADJUST_STOCK", "CHANGE_ORDER_STATUS"
+  entity     String   // e.g. "User", "Product", "Order", "Member"
+  entityId   String?  @map("entity_id")
+  detailJson Json?    @map("detail_json")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relasi
+  user User? @relation("UserAuditLogs", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
