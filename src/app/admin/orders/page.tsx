@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatRupiah } from "@/lib/money";
 import OrderActions from "@/components/admin/OrderActions";
@@ -16,9 +17,13 @@ const STATUS_STYLE: Record<string, { label: string; className: string }> = {
 
 export default async function AdminOrdersPage() {
   const orders = await db.order.findMany({
-    orderBy: { createdAt: "desc" },
-    include: { member: true, orderItems: { include: { product: true } } },
-  });
+  orderBy: { createdAt: "desc" },
+  include: {
+    member: true,
+    orderItems: { include: { product: true } },
+    sale: { select: { id: true } },
+  },
+});
 
   return (
     <div className="space-y-4">
@@ -62,9 +67,19 @@ export default async function AdminOrdersPage() {
               {o.note && <p className="text-sm text-slate-500">Catatan: {o.note}</p>}
 
               <div className="flex items-end justify-between gap-4 border-t border-slate-100 pt-3">
-                <OrderActions orderId={o.id} status={o.status} />
-                <span className="font-bold text-emerald-700">{formatRupiah(o.total)}</span>
-              </div>
+                  <div className="space-y-2">
+                  <OrderActions orderId={o.id} status={o.status} />
+                    {o.sale && (
+                  <Link
+                        href={`/admin/sales/${o.sale.id}/receipt`}
+                        className="inline-block text-sm text-emerald-700 underline"
+                  >
+                        Lihat struk
+                    </Link>
+                  )}
+            </div>
+              <span className="font-bold text-emerald-700">{formatRupiah(o.total)}</span>
+            </div>
             </div>
           );
         })}
