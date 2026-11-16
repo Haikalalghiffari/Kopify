@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/money";
@@ -32,6 +33,7 @@ export default function PosClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [lastSaleId, setLastSaleId] = useState("");
 
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
@@ -49,6 +51,7 @@ export default function PosClient({
 
   function add(p: PosProduct) {
     setSuccess("");
+    setLastSaleId("");
     setCart((prev) => {
       const line = prev.find((l) => l.productId === p.id);
       if (line) {
@@ -81,6 +84,7 @@ export default function PosClient({
     setLoading(true);
     setError("");
     setSuccess("");
+    setLastSaleId("");
     try {
       const res = await fetch("/api/sales", {
         method: "POST",
@@ -98,6 +102,7 @@ export default function PosClient({
         return;
       }
       setSuccess(`Transaksi ${data.saleNo} tersimpan.`);
+      setLastSaleId(data.id);
       setCart([]);
       setDiscount("0");
       setMemberId("");
@@ -254,7 +259,19 @@ export default function PosClient({
         </button>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
-        {success && <p className="text-sm text-emerald-700">{success}</p>}
+        {success && (
+          <div className="space-y-1">
+            <p className="text-sm text-emerald-700">{success}</p>
+            {lastSaleId && (
+              <Link
+                href={`/admin/sales/${lastSaleId}/receipt`}
+                className="text-sm text-emerald-700 underline"
+              >
+                Lihat struk
+              </Link>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
