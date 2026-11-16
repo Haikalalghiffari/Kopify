@@ -1,3 +1,4 @@
+import CancelOrderButton from "@/components/member/CancelOrderButton";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { listMemberOrders } from "@/services/orderService";
@@ -78,9 +79,12 @@ export default async function MemberOrdersPage() {
                 </p>
               )}
 
-              <div className="flex justify-between border-t border-slate-100 pt-3">
-                <span className="text-sm text-slate-500">Total</span>
-                <span className="font-bold text-emerald-700">{formatRupiah(o.total)}</span>
+              <div className="flex items-end justify-between gap-4 border-t border-slate-100 pt-3">
+                <div>{o.status === "DIAJUKAN" && <CancelOrderButton orderId={o.id} />}</div>
+                <div className="text-right">
+                  <span className="text-sm text-slate-500 mr-2">Total</span>
+                  <span className="font-bold text-emerald-700">{formatRupiah(o.total)}</span>
+                </div>
               </div>
             </div>
           );
