@@ -39,6 +39,8 @@ export interface ReserveStockParams {
   productId: string;
   qty: number;
   orderId: string;
+  /** Optional transaction supplied by caller */
+  tx?: StockTransactionClient;
 }
 
 // ==========================================
@@ -49,6 +51,8 @@ export interface ReleaseStockParams {
   productId: string;
   qty: number;
   orderId: string;
+  /** Optional transaction supplied by caller */
+  tx?: StockTransactionClient;
 }
 
 // ==========================================
@@ -57,10 +61,14 @@ export interface ReleaseStockParams {
 
 export interface CommitReservationParams {
   orderId: string;
+  userId: string; // audit actor
+  /** optional external transaction client */
+  externalTx?: StockTransactionClient;
 }
 
+
 // ==========================================
-// RECEIVE STOCK (BARANG MASUK)
+// RECEIVE STOCKS (BARANG MASUK)
 // ==========================================
 
 export interface ReceiveStockParams {
@@ -93,15 +101,18 @@ export interface IStockService {
   ): Promise<AdjustStockResult>;
 
   reserve(
-    params: ReserveStockParams
+    params: ReserveStockParams,
+    tx?: StockTransactionClient
   ): Promise<void>;
 
   release(
-    params: ReleaseStockParams
+    params: ReleaseStockParams,
+    tx?: StockTransactionClient
   ): Promise<void>;
 
   commitReservation(
-    params: CommitReservationParams
+    params: CommitReservationParams,
+    tx?: StockTransactionClient
   ): Promise<void>;
 
   receiveStock(

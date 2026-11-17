@@ -1,4 +1,3 @@
-
 import { Prisma, PrismaClient, StockMovementType } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
@@ -70,7 +69,7 @@ function assertPositiveQuantity(qty: number, fieldName: string): void {
 // ==========================================
 
 export class StockService implements IStockService {
-  constructor(private readonly prisma: PrismaClient = db) {}
+  constructor(private readonly prisma: PrismaClient = db) { }
 
   // ==========================================
   // ADJUST STOCK
@@ -174,12 +173,10 @@ export class StockService implements IStockService {
       };
     };
 
-    // Gunakan transaksi dari pemanggil jika tersedia.
     if (tx) {
       return execute(tx);
     }
 
-    // Jika tidak tersedia, buat transaksi sendiri.
     return this.prisma.$transaction(execute);
   }
 
@@ -286,26 +283,25 @@ export class StockService implements IStockService {
   // Mencatat reservasi berdasarkan orderId.
   // ==========================================
 
-  async reserve(params: ReserveStockParams): Promise<void> {
+  async reserve(params: ReserveStockParams, tx?: StockTransactionClient): Promise<void> {
     const { productId, qty, orderId } = params;
 
     assertPositiveQuantity(qty, "Jumlah reservasi");
 
-    await this.prisma.$transaction(async (tx) => {
+    const exec = async (tx: StockTransactionClient) => {
       await lockOrder(tx, orderId);
 
       const product = await lockProduct(tx, productId);
 
       // Cegah reservasi aktif ganda untuk produk dan pesanan sama.
-      const existingReservation =
-        await tx.stockReservation.findFirst({
-          where: {
-            orderId,
-            productId,
-            status: "ACTIVE",
-            remainingQty: { gt: 0 },
-          },
-        });
+      const existingReservation = await tx.stockReservation.findFirst({
+        where: {
+          orderId,
+          productId,
+          status: "ACTIVE",
+          remainingQty: { gt: 0 },
+        },
+      });
 
       if (existingReservation) {
         throw new Error(
@@ -323,21 +319,19 @@ export class StockService implements IStockService {
 
       await tx.product.update({
         where: { id: productId },
-        data: {
-          reservedStock: product.reservedStock + qty,
-        },
+        data: { reservedStock: product.reservedStock + qty },
       });
 
       await tx.stockReservation.create({
-        data: {
-          orderId,
-          productId,
-          qty,
-          remainingQty: qty,
-          status: "ACTIVE",
-        },
+        data: { orderId, productId, qty, remainingQty: qty, status: "ACTIVE" },
       });
-    });
+    };
+
+    if (tx) {
+      await exec(tx);
+    } else {
+      await this.prisma.$transaction(exec);
+    }
   }
 
   // ==========================================
@@ -346,12 +340,12 @@ export class StockService implements IStockService {
   // Mendukung pelepasan sebagian.
   // ==========================================
 
-  async release(params: ReleaseStockParams): Promise<void> {
+  async release(params: ReleaseStockParams, tx?: StockTransactionClient): Promise<void> {
     const { productId, qty, orderId } = params;
 
     assertPositiveQuantity(qty, "Jumlah pelepasan reservasi");
 
-    await this.prisma.$transaction(async (tx) => {
+    const exec = async (tx: StockTransactionClient) => {
       await lockOrder(tx, orderId);
 
       const product = await lockProduct(tx, productId);
@@ -363,9 +357,7 @@ export class StockService implements IStockService {
           status: "ACTIVE",
           remainingQty: { gt: 0 },
         },
-        orderBy: {
-          createdAt: "asc",
-        },
+        orderBy: { createdAt: "asc" },
       });
 
       const totalReserved = reservations.reduce(
@@ -390,20 +382,14 @@ export class StockService implements IStockService {
       for (const reservation of reservations) {
         if (remainingToRelease <= 0) break;
 
-        const releaseQty = Math.min(
-          reservation.remainingQty,
-          remainingToRelease
-        );
-
-        const newRemainingQty =
-          reservation.remainingQty - releaseQty;
+        const releaseQty = Math.min(reservation.remainingQty, remainingToRelease);
+        const newRemainingQty = reservation.remainingQty - releaseQty;
 
         await tx.stockReservation.update({
           where: { id: reservation.id },
           data: {
             remainingQty: newRemainingQty,
-            status:
-              newRemainingQty === 0 ? "RELEASED" : "ACTIVE",
+            status: newRemainingQty === 0 ? "RELEASED" : "ACTIVE",
           },
         });
 
@@ -412,11 +398,15 @@ export class StockService implements IStockService {
 
       await tx.product.update({
         where: { id: productId },
-        data: {
-          reservedStock: product.reservedStock - qty,
-        },
+        data: { reservedStock: product.reservedStock - qty },
       });
-    });
+    };
+
+    if (tx) {
+      await exec(tx);
+    } else {
+      await this.prisma.$transaction(exec);
+    }
   }
 
   // ==========================================
@@ -425,10 +415,8 @@ export class StockService implements IStockService {
   // Semua perubahan berjalan dalam satu transaksi.
   // ==========================================
 
-  async commitReservation(
-    { orderId }: CommitReservationParams
-  ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  async commitReservation({ orderId, userId }: CommitReservationParams, tx?: StockTransactionClient): Promise<void> {
+    const exec = async (tx: StockTransactionClient) => {
       await lockOrder(tx, orderId);
 
       const reservations = await tx.stockReservation.findMany({
@@ -437,60 +425,43 @@ export class StockService implements IStockService {
           status: "ACTIVE",
           remainingQty: { gt: 0 },
         },
-        orderBy: {
-          productId: "asc",
-        },
+        orderBy: { productId: "asc" },
       });
 
       // Idempotensi: jika seluruh reservasi sudah committed,
       // pemanggilan ulang tidak mengurangi stok lagi.
-      const committedReservations =
-        await tx.stockReservation.count({
-          where: {
-            orderId,
-            status: "COMMITTED",
-          },
-        });
+      const committedReservations = await tx.stockReservation.count({
+        where: {
+          orderId,
+          status: "COMMITTED",
+        },
+      });
 
       if (reservations.length === 0) {
         if (committedReservations > 0) {
           return;
         }
-
-        throw new Error(
-          `Tidak ada reservasi aktif untuk pesanan ${orderId}`
-        );
+        throw new Error(`Tidak ada reservasi aktif untuk pesanan ${orderId}`);
       }
 
       if (committedReservations > 0) {
-        throw new Error(
-          `Status reservasi pesanan ${orderId} tidak konsisten`
-        );
+        throw new Error(`Status reservasi pesanan ${orderId} tidak konsisten`);
       }
 
       const orderItems = await tx.orderItem.findMany({
         where: { orderId },
-        select: {
-          productId: true,
-          qty: true,
-        },
-        orderBy: {
-          productId: "asc",
-        },
+        select: { productId: true, qty: true },
+        orderBy: { productId: "asc" },
       });
 
       if (orderItems.length === 0) {
-        throw new Error(
-          `Pesanan ${orderId} tidak memiliki barang`
-        );
+        throw new Error(`Pesanan ${orderId} tidak memiliki barang`);
       }
 
       // Gabungkan jumlah item pesanan per produk.
       const orderQuantities = new Map<string, number>();
-
       for (const item of orderItems) {
         assertPositiveQuantity(item.qty, "Jumlah barang pesanan");
-
         orderQuantities.set(
           item.productId,
           (orderQuantities.get(item.productId) ?? 0) + item.qty
@@ -499,12 +470,11 @@ export class StockService implements IStockService {
 
       // Gabungkan jumlah reservasi aktif per produk.
       const reservationQuantities = new Map<string, number>();
-
       for (const reservation of reservations) {
         reservationQuantities.set(
           reservation.productId,
           (reservationQuantities.get(reservation.productId) ?? 0) +
-            reservation.remainingQty
+          reservation.remainingQty
         );
       }
 
@@ -515,12 +485,8 @@ export class StockService implements IStockService {
         );
       }
 
-      // PERBAIKAN: menggunakan forEach agar kompatibel
-      // dengan konfigurasi target TypeScript project.
       orderQuantities.forEach((orderQty, productId) => {
-        const reservedQty =
-          reservationQuantities.get(productId) ?? 0;
-
+        const reservedQty = reservationQuantities.get(productId) ?? 0;
         if (reservedQty !== orderQty) {
           throw new Error(
             `Reservasi barang ${productId} tidak sesuai. Pesanan: ${orderQty}, reservasi: ${reservedQty}`
@@ -531,36 +497,20 @@ export class StockService implements IStockService {
       const productIds = Array.from(orderQuantities.keys()).sort();
 
       // Kunci produk berdasarkan urutan ID untuk mengurangi risiko deadlock.
-      const products = new Map<
-        string,
-        Awaited<ReturnType<typeof lockProduct>>
-      >();
-
+      const products = new Map<string, Awaited<ReturnType<typeof lockProduct>>>();
       for (const productId of productIds) {
-        products.set(
-          productId,
-          await lockProduct(tx, productId)
-        );
+        products.set(productId, await lockProduct(tx, productId));
       }
 
       // Validasi semua produk sebelum mengubah stok.
       for (const productId of productIds) {
         const product = products.get(productId);
         const qty = orderQuantities.get(productId);
-
         if (!product || qty === undefined) {
-          throw new Error(
-            `Data stok barang ${productId} tidak ditemukan`
-          );
+          throw new Error(`Data stok barang ${productId} tidak ditemukan`);
         }
-
-        const reservedQty =
-          reservationQuantities.get(productId) ?? 0;
-
-        if (
-          product.stock < qty ||
-          product.reservedStock < reservedQty
-        ) {
+        const reservedQty = reservationQuantities.get(productId) ?? 0;
+        if (product.stock < qty || product.reservedStock < reservedQty) {
           throw new Error(
             `Stok tidak cukup untuk menyelesaikan pesanan ${orderId} pada barang ${product.name}`
           );
@@ -571,23 +521,14 @@ export class StockService implements IStockService {
       for (const productId of productIds) {
         const product = products.get(productId);
         const qty = orderQuantities.get(productId);
-
         if (!product || qty === undefined) {
-          throw new Error(
-            `Data stok barang ${productId} tidak ditemukan`
-          );
+          throw new Error(`Data stok barang ${productId} tidak ditemukan`);
         }
-
         const stockAfter = product.stock - qty;
-
         await tx.product.update({
           where: { id: productId },
-          data: {
-            stock: stockAfter,
-            reservedStock: product.reservedStock - qty,
-          },
+          data: { stock: stockAfter, reservedStock: product.reservedStock - qty },
         });
-
         await tx.stockMovement.create({
           data: {
             productId,
@@ -598,6 +539,7 @@ export class StockService implements IStockService {
             refType: "ORDER",
             refId: orderId,
             note: `Penyelesaian pesanan ${orderId}`,
+            createdBy: userId,
           },
         });
       }
@@ -614,7 +556,13 @@ export class StockService implements IStockService {
           status: "COMMITTED",
         },
       });
-    });
+    };
+
+    if (tx) {
+      await exec(tx);
+    } else {
+      await this.prisma.$transaction(exec);
+    }
   }
 }
 
