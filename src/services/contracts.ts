@@ -4,7 +4,10 @@
  * Tanggung Jawab P2
  */
 
-import { StockMovementType } from "@prisma/client";
+import { Prisma, StockMovementType } from "@prisma/client";
+
+// Transaction client untuk mendukung transaksi dari modul lain.
+export type StockTransactionClient = Prisma.TransactionClient;
 
 // ==========================================
 // ADJUST STOCK
@@ -85,7 +88,8 @@ export interface StockOpnameParams {
 
 export interface IStockService {
   adjustStock(
-    params: AdjustStockParams
+    params: AdjustStockParams,
+    tx?: StockTransactionClient
   ): Promise<AdjustStockResult>;
 
   reserve(
