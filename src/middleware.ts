@@ -1,10 +1,17 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 import { isRouteAllowed, UserRole } from "@/lib/rbac";
+import { isPublicPath } from "@/lib/publicRoutes";
 
 export default withAuth(
   function middleware(req) {
     const { pathname } = req.nextUrl;
+
+    // Lewatkan seluruh jalur publik sebelum pemeriksaan RBAC
+    if (isPublicPath(pathname)) {
+      return NextResponse.next();
+    }
+
     const token = req.nextauth.token;
     const role = (token?.role as UserRole) || null;
 
@@ -31,13 +38,7 @@ export default withAuth(
         const { pathname } = req.nextUrl;
 
         // Rute publik bebas diakses tanpa login
-        if (
-          pathname === "/login" ||
-          pathname === "/unauthorized" ||
-          pathname.startsWith("/api/auth") ||
-          pathname.startsWith("/_next") ||
-          pathname.includes(".")
-        ) {
+        if (isPublicPath(pathname)) {
           return true;
         }
 
