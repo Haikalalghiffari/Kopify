@@ -19,6 +19,8 @@ import {
   Menu,
   X,
   Store,
+  Tags,
+  Truck,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { cn } from "@/lib/utils";
@@ -33,7 +35,9 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { label: "Anggota", href: "/admin/members", icon: Users },
-  { label: "Barang & Kategori", href: "/admin/products", icon: Package },
+  { label: "Barang", href: "/admin/products", icon: Package },
+  { label: "Kategori & Satuan", href: "/admin/categories", icon: Tags },
+  { label: "Pemasok", href: "/admin/suppliers", icon: Truck },
   { label: "Manajemen Stok", href: "/admin/stock", icon: Layers },
   { label: "Pesanan Masuk", href: "/admin/orders", icon: ShoppingBag },
   { label: "Kasir (POS)", href: "/admin/sales", icon: Receipt },
@@ -163,7 +167,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
-            className="w-full flex items-center justify-center space-x-2 px-3 py-2 text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded-lg transition-colors border border-rose-900/30"
+            className="w-full flex items-center justify-center space-x-2 px-3 py-2 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors border border-slate-700"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Keluar Akun</span>
