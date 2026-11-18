@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function CancelOrderButton({ orderId }: { orderId: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const busyRef = useRef(false);
 
   async function cancel() {
+    if (busyRef.current) return;
     if (!window.confirm("Batalkan pesanan ini?")) return;
+    busyRef.current = true;
     setLoading(true);
     setError("");
     try {
@@ -24,6 +27,7 @@ export default function CancelOrderButton({ orderId }: { orderId: string }) {
       setError("Tidak bisa menghubungi server.");
     } finally {
       setLoading(false);
+      busyRef.current = false;
     }
   }
 

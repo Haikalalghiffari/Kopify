@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   }
 
   const role = session.user.role;
-  const userId = (session.user as any).id as string | undefined;
+  const userId = session.user.id;
 
   let body: any;
   try {
@@ -20,7 +20,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Data tidak valid." }, { status: 400 });
   }
 
-  if (!Array.isArray(body?.items)) {
+  // Bentuk setiap baris diperiksa SEBELUM dipetakan: elemen null/primitif/array tidak boleh
+  // sampai ke `i.productId` (TypeError di luar try -> 500). Aturan jumlah/stok tetap di service.
+  const isValidLine = (i: unknown): boolean =>
+    typeof i === "object" &&
+    i !== null &&
+    !Array.isArray(i) &&
+    typeof (i as { productId?: unknown }).productId === "string" &&
+    (i as { productId: string }).productId.trim() !== "";
+
+  if (!Array.isArray(body?.items) || !body.items.every(isValidLine)) {
     return NextResponse.json({ error: "Data keranjang tidak valid." }, { status: 400 });
   }
 
@@ -33,10 +42,13 @@ export async function POST(req: Request) {
     if (!memberId) {
       return NextResponse.json({ error: "Pilih anggota terlebih dahulu." }, { status: 400 });
     }
+    if (!userId) {
+      return NextResponse.json({ error: "Sesi tidak valid. Silakan login ulang." }, { status: 401 });
+    }
     createdBy = userId;
   } else {
     // Anggota: selalu atas nama dirinya sendiri, body.memberId diabaikan
-    memberId = session.user.memberId ?? undefined; // <- perbaikan: null menjadi undefined
+    memberId = session.user.memberId ?? undefined;
     if (!memberId) {
       return NextResponse.json({ error: "Akun ini bukan akun anggota." }, { status: 403 });
     }
@@ -51,7 +63,12 @@ export async function POST(req: Request) {
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim() : undefined;
 
   try {
-    const order = await createOrder({ memberId, items, note, createdBy });
+    const order = await createOrder({
+      memberId,
+      items,
+      note,
+      createdBy: createdBy ?? userId,
+    });
     return NextResponse.json({ orderNo: order.orderNo, total: order.total }, { status: 201 });
   } catch (e) {
     if (e instanceof OrderError) {

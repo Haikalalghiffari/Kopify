@@ -2,16 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { formatRupiah } from "@/lib/money";
+import { formatWibDateTime } from "@/lib/formatWibDateTime";
+import { formatPaymentLine } from "@/lib/paymentLabels";
 import PrintButton from "@/components/admin/PrintButton";
+import DownloadPdfLink from "@/components/shared/DownloadPdfLink";
 
 export const dynamic = "force-dynamic";
-
-const METHOD_LABEL: Record<string, string> = {
-  TUNAI: "Tunai",
-  TRANSFER: "Transfer",
-  BON: "Bon",
-  LAINNYA: "Lainnya",
-};
 
 export default async function ReceiptPage({ params }: { params: { id: string } }) {
   const sale = await db.sale.findUnique({
@@ -29,7 +25,6 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
 
   return (
     <div className="space-y-4">
-      {/* Sembunyikan sidebar/header saat dicetak */}
       <style>{`
         @media print {
           aside, nav, header { display: none !important; }
@@ -37,8 +32,9 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
         }
       `}</style>
 
-      <div className="flex gap-2 print:hidden">
+      <div className="flex flex-wrap gap-2 print:hidden">
         <PrintButton />
+        <DownloadPdfLink href={`/api/sales/${sale.id}/pdf`} label="Unduh PDF" />
         <Link
           href="/admin/sales"
           className="px-3 py-2 rounded-xl text-sm font-medium border border-slate-200 text-slate-700 hover:bg-slate-50"
@@ -59,14 +55,8 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
             <span className="font-medium">{sale.saleNo}</span>
           </div>
           <div className="flex justify-between">
-            <span>Tanggal</span>
-            <span>
-              {new Date(sale.soldAt).toLocaleString("id-ID", {
-                timeZone: "Asia/Jakarta",
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </span>
+            <span>Tanggal (WIB)</span>
+            <span>{formatWibDateTime(sale.soldAt)}</span>
           </div>
           <div className="flex justify-between">
             <span>Pembeli</span>
@@ -113,10 +103,7 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
           </div>
           <div className="flex justify-between text-xs text-slate-600 pt-1">
             <span>Pembayaran</span>
-            <span>
-              {METHOD_LABEL[sale.paymentMethod] ?? sale.paymentMethod} ·{" "}
-              {sale.paymentStatus === "LUNAS" ? "Lunas" : "Belum lunas"}
-            </span>
+            <span>{formatPaymentLine(sale.paymentMethod, sale.paymentStatus)}</span>
           </div>
         </div>
 

@@ -25,11 +25,11 @@ async function main() {
   });
   console.log("HASIL | Pesanan dibuat:", order.orderNo, "total:", order.total);
 
-  await confirmOrder(order.id);
+  await confirmOrder(order.id, { userId: kasir.id });
   await show("Setelah konfirmasi");
 
-  await advanceOrder(order.id, "DISIAPKAN");
-  await advanceOrder(order.id, "SIAP_DIAMBIL");
+  await advanceOrder(order.id, "DISIAPKAN", { userId: kasir.id });
+  await advanceOrder(order.id, "SIAP_DIAMBIL", { userId: kasir.id });
   await completeOrder(order.id, { userId: kasir.id });
   await show("Setelah selesai");
 

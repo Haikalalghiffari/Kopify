@@ -1,5 +1,9 @@
-import { Prisma, PaymentMethod, PaymentStatus } from "@prisma/client";
+import { Prisma, PaymentMethod, PaymentStatus, StockMovementType } from "@prisma/client";
 import { db } from "@/lib/db";
+import { stockService } from "@/services/stockService";
+import { nextDocumentNumber } from "@/services/documentNumber";
+import { resolveSalePaymentFields } from "@/services/paymentFields";
+import { auditSaleAction } from "@/services/p4Audit";
 
 export class SaleError extends Error {
   constructor(message: string) {
@@ -8,19 +12,11 @@ export class SaleError extends Error {
   }
 }
 
-type Tx = Prisma.TransactionClient;
-
-function wibDateStamp(): string {
-  const wib = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  return wib.toISOString().slice(0, 10).replace(/-/g, "");
-}
-
-// Nomor SLS-YYYYMMDD-XXXX. Advisory lock mencegah dua kasir mendapat nomor sama.
-async function nextSaleNo(tx: Tx): Promise<string> {
-  const prefix = `SLS-${wibDateStamp()}-`;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${prefix}))`;
-  const count = await tx.sale.count({ where: { saleNo: { startsWith: prefix } } });
-  return prefix + String(count + 1).padStart(4, "0");
+function requireActorId(userId: string | undefined): string {
+  if (!userId?.trim()) {
+    throw new SaleError("Sesi tidak valid. Silakan login ulang.");
+  }
+  return userId;
 }
 
 export type CreateSaleInput = {
@@ -39,6 +35,8 @@ export type CreateSaleInput = {
  * Harga jual selalu diambil dari database, bukan dari klien.
  */
 export async function createSale(input: CreateSaleInput) {
+  const actorId = requireActorId(input.createdBy);
+
   const merged = new Map<string, number>();
   for (const it of input.items) {
     if (!Number.isInteger(it.qty) || it.qty <= 0) {
@@ -53,10 +51,10 @@ export async function createSale(input: CreateSaleInput) {
     throw new SaleError("Diskon harus bilangan bulat rupiah, minimal 0.");
   }
 
-  const paymentMethod = input.paymentMethod ?? "TUNAI";
-  // BON otomatis belum lunas; metode lain lunas kecuali ditentukan
-  const paymentStatus: PaymentStatus =
-    input.paymentStatus ?? (paymentMethod === "BON" ? "BELUM_LUNAS" : "LUNAS");
+  const { paymentMethod, paymentStatus } = resolveSalePaymentFields(
+    input.paymentMethod,
+    input.paymentStatus
+  );
 
   if (paymentMethod === "BON" && !input.memberId) {
     throw new SaleError("Pembayaran BON hanya untuk anggota. Pilih anggota dulu.");
@@ -104,13 +102,6 @@ export async function createSale(input: CreateSaleInput) {
         throw new SaleError(`Stok "${p.name}" tidak cukup (tersedia ${available}).`);
       }
 
-      const affected = await tx.$executeRaw`
-        UPDATE products SET stock = stock - ${qty}
-        WHERE id = ${productId} AND (stock - reserved_stock) >= ${qty}`;
-      if (affected === 0) {
-        throw new SaleError(`Stok "${p.name}" tidak cukup.`);
-      }
-
       subtotal += qty * p.sell_price;
       saleItems.push({
         productId,
@@ -124,7 +115,7 @@ export async function createSale(input: CreateSaleInput) {
       throw new SaleError("Diskon tidak boleh lebih besar dari total belanja.");
     }
 
-    const saleNo = await nextSaleNo(tx);
+    const saleNo = await nextDocumentNumber(tx, "SLS");
     const sale = await tx.sale.create({
       data: {
         saleNo,
@@ -133,32 +124,43 @@ export async function createSale(input: CreateSaleInput) {
         discount,
         paymentMethod,
         paymentStatus,
-        createdBy: input.createdBy,
+        createdBy: actorId,
         saleItems: { create: saleItems },
       },
       include: { saleItems: true },
     });
 
-    // Catat pergerakan stok (stok_before diambil dari baris yang sudah dikunci)
     for (const item of saleItems) {
-      const after = await tx.product.findUniqueOrThrow({
-        where: { id: item.productId },
-        select: { stock: true },
-      });
-      await tx.stockMovement.create({
-        data: {
-          productId: item.productId,
-          type: "SALE",
-          qtyChange: -item.qty,
-          stockBefore: after.stock + item.qty,
-          stockAfter: after.stock,
-          refType: "SALE",
-          refId: sale.id,
-          note: `Penjualan ${saleNo}`,
-          createdBy: input.createdBy,
-        },
-      });
+      try {
+        await stockService.adjustStock(
+          {
+            productId: item.productId,
+            qtyChange: -item.qty,
+            type: StockMovementType.SALE,
+            refType: "SALE",
+            refId: sale.id,
+            note: `Penjualan ${saleNo}`,
+            userId: actorId,
+          },
+          tx
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Gagal menyesuaikan stok.";
+        throw new SaleError(
+          msg.includes("tidak cukup") ? `Stok tidak cukup untuk barang ini.` : msg
+        );
+      }
     }
+
+    await auditSaleAction(tx, actorId, "CREATE_SALE", sale.id, {
+      saleNo: sale.saleNo,
+      total: sale.total,
+      discount,
+      paymentMethod,
+      paymentStatus,
+      memberId: sale.memberId,
+      itemCount: saleItems.length,
+    });
 
     return sale;
   });
