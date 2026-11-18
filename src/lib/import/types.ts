@@ -124,6 +124,8 @@ export interface NormalizedProductRow {
   openingStock: number;
   minStock: number;
   isActive: boolean;
+  /** Kolom dipetakan dan sel sumber tidak kosong; dipakai payload UPDATE aman. */
+  updateProvidedFields?: ProductFieldKey[];
 }
 
 export interface ImportValidationOptions {

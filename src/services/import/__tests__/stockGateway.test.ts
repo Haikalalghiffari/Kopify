@@ -5,10 +5,11 @@ import {
 } from "../stockGateway";
 
 describe("stockGateway", () => {
-  it("belum menyediakan stockService P2", async () => {
-    expect(await resolveStockService()).toBeNull();
+  it("menghubungkan ke stockService P2", async () => {
+    const service = await resolveStockService();
+    expect(service).not.toBeNull();
+    expect(typeof service?.adjustStock).toBe("function");
     const gate = await isProductImportExecutionAllowed();
-    expect(gate.allowed).toBe(false);
-    expect(gate.reason).toContain("stockService");
+    expect(gate.allowed).toBe(true);
   });
 });

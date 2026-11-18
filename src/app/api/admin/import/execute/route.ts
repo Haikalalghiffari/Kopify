@@ -48,15 +48,17 @@ export async function POST(request: NextRequest) {
 
   if (importType === "PRODUCTS") {
     const gate = await isProductImportExecutionAllowed();
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          gate.reason ??
-          "Impor barang belum tersedia sampai stockService P2 siap.",
-      },
-      { status: 503 }
-    );
+    if (!gate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            gate.reason ??
+            "Impor barang belum tersedia sampai stockService P2 siap.",
+        },
+        { status: 503 }
+      );
+    }
   }
 
   const mapping = parseMapping(formData.get("mapping"));

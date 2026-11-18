@@ -8,6 +8,7 @@ import {
   toPreviewPayload,
   type PreviewImportApiResponse,
 } from "@/lib/import/sessionPayload";
+import { loadCategoryUnitMaps, applyProductMasterValidation } from "@/lib/import/productMasterRefs";
 import { validateImportRows } from "@/lib/import/validateRows";
 import type { ColumnMapping, ImportValidationOptions } from "@/lib/import/types";
 
@@ -74,12 +75,17 @@ export async function POST(request: NextRequest) {
     const mappingCheck = validateColumnMapping(headers, mapping, importType);
 
     const options: ImportValidationOptions = { strict };
-    const summary = validateImportRows(
+    let summary = validateImportRows(
       importType,
       parsed.selectedWorksheet,
       mapping,
       options
     );
+
+    if (importType === "PRODUCTS") {
+      const maps = await loadCategoryUnitMaps();
+      summary = applyProductMasterValidation(summary, maps);
+    }
 
     const body: PreviewImportApiResponse = {
       success: true,

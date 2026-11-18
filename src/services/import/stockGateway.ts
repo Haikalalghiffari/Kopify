@@ -1,11 +1,9 @@
+import { stockService } from "@/services/stockService";
 import type { IStockService } from "@/services/contracts";
 
-/**
- * Adapter ke stockService P2. Setelah P2 menambahkan `src/services/stockService.ts`,
- * hubungkan implementasi `IStockService` di sini tanpa mengubah kontrak.
- */
+/** Adapter ke stockService P2 tanpa mengubah kontrak P2. */
 export async function resolveStockService(): Promise<IStockService | null> {
-  return null;
+  return stockService;
 }
 
 export async function isProductImportExecutionAllowed(): Promise<{

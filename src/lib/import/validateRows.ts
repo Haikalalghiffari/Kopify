@@ -17,6 +17,7 @@ import type {
   ImportDataType,
   ImportValidationOptions,
   MemberFieldKey,
+  ProductFieldKey,
   NormalizedMemberRow,
   NormalizedProductRow,
   ParsedWorksheet,
@@ -39,6 +40,30 @@ function memberUpdateProvidedFields(
 ): MemberFieldKey[] {
   const provided: MemberFieldKey[] = [];
   for (const key of MEMBER_UPDATE_OPTIONAL_KEYS) {
+    if (!(key in mapped)) continue;
+    if (trimToEmpty(mapped[key]) === "") continue;
+    provided.push(key);
+  }
+  return provided;
+}
+
+const PRODUCT_UPDATE_OPTIONAL_KEYS: ProductFieldKey[] = [
+  "categoryName",
+  "unitName",
+  "costPrice",
+  "sellPrice",
+  "openingStock",
+  "minStock",
+  "isActive",
+];
+
+const SKU_PATTERN = /^[A-Z0-9][A-Z0-9._\-]{0,49}$/;
+
+function productUpdateProvidedFields(
+  mapped: Record<string, string>
+): ProductFieldKey[] {
+  const provided: ProductFieldKey[] = [];
+  for (const key of PRODUCT_UPDATE_OPTIONAL_KEYS) {
     if (!(key in mapped)) continue;
     if (trimToEmpty(mapped[key]) === "") continue;
     provided.push(key);
@@ -153,6 +178,12 @@ function validateProductMapped(
   const sku = normalizeSku(mapped.sku);
   if (!sku) {
     errors.push({ field: "sku", message: "SKU wajib diisi." });
+  } else if (!SKU_PATTERN.test(sku)) {
+    errors.push({
+      field: "sku",
+      message:
+        "Format SKU tidak valid. Gunakan huruf, angka, titik, strip, atau underscore (maks. 50 karakter).",
+    });
   }
 
   const name = trimToEmpty(mapped.name);
@@ -243,6 +274,7 @@ function validateProductMapped(
       openingStock: opening.value ?? 0,
       minStock: minStock.value ?? 5,
       isActive,
+      updateProvidedFields: productUpdateProvidedFields(mapped),
     },
     errors,
     warnings,

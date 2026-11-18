@@ -167,12 +167,6 @@ export function ImportWizard() {
 
   const runExecute = async () => {
     if (!file || executingRef.current || executionLocked) return;
-    if (importType === "PRODUCTS") {
-      setFieldError(
-        "Impor barang menunggu stockService P2. Saat ini hanya impor anggota yang dapat dijalankan."
-      );
-      return;
-    }
     executingRef.current = true;
     setBusy(true);
     setFieldError(null);
@@ -258,8 +252,8 @@ export function ImportWizard() {
       <header className="space-y-1">
         <h1 className="text-xl font-bold text-slate-900">Impor Data Excel</h1>
         <p className="text-sm text-slate-600">
-          Unggah data anggota atau barang dari sistem lama. Impor anggota disimpan ke database
-          pada langkah konfirmasi. Impor barang menunggu modul stok dari P2.
+          Unggah data anggota atau barang dari sistem lama. Data disimpan ke database pada
+          langkah konfirmasi. Stok awal barang baru dicatat lewat stockService (IMPORT).
         </p>
       </header>
 
@@ -598,8 +592,9 @@ export function ImportWizard() {
             </li>
           </ul>
           {importType === "PRODUCTS" && (
-            <p className="text-sm text-amber-900 border border-amber-200 bg-amber-50 rounded-lg p-4">
-              Impor barang dengan stok awal diblokir sampai modul stockService dari P2 tersedia.
+            <p className="text-sm text-slate-700 border border-slate-200 bg-slate-50 rounded-lg p-4">
+              Barang baru: stok awal dari file dicatat sebagai pergerakan IMPORT. Barang yang sudah
+              ada tidak diubah stoknya pada mode UPDATE; kolom stok awal ditolak jika diisi.
             </p>
           )}
 
@@ -659,7 +654,6 @@ export function ImportWizard() {
               disabled={
                 busy ||
                 executionLocked ||
-                importType === "PRODUCTS" ||
                 !preview.mappingValid ||
                 preview.validCount === 0
               }
