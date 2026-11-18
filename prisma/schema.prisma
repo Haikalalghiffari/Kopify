@@ -31,6 +31,12 @@ enum StockMovementType {
   RETURN
 }
 
+enum StockReservationStatus {
+  ACTIVE
+  RELEASED
+  COMMITTED
+}
+
 enum OrderStatus {
   DIAJUKAN
   DIKONFIRMASI
@@ -70,15 +76,15 @@ enum ImportStatus {
 // ==========================================
 
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  role         Role      @default(ANGGOTA)
-  memberId     String?   @unique @map("member_id")
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(ANGGOTA)
+  memberId     String?  @unique @map("member_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   // Relasi
   member          Member?          @relation(fields: [memberId], references: [id], onDelete: SetNull)
@@ -118,35 +124,41 @@ model Member {
 model Category {
   id        String    @id @default(cuid())
   name      String    @unique
+  deletedAt DateTime? @map("deleted_at")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
   // Relasi
   products Product[]
 
+  @@index([deletedAt])
   @@map("categories")
 }
 
 model Unit {
   id        String    @id @default(cuid())
   name      String    @unique
+  deletedAt DateTime? @map("deleted_at")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
   // Relasi
   products Product[]
 
+  @@index([deletedAt])
   @@map("units")
 }
 
 model Supplier {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   phone     String?
   address   String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
+  @@index([deletedAt])
   @@map("suppliers")
 }
 
@@ -156,8 +168,8 @@ model Product {
   name          String
   categoryId    String    @map("category_id")
   unitId        String    @map("unit_id")
-  costPrice     Int       @default(0) @map("cost_price") // Dalam rupiah integer
-  sellPrice     Int       @default(0) @map("sell_price") // Dalam rupiah integer
+  costPrice     Int       @default(0) @map("cost_price")
+  sellPrice     Int       @default(0) @map("sell_price")
   stock         Int       @default(0)
   reservedStock Int       @default(0) @map("reserved_stock")
   minStock      Int       @default(5) @map("min_stock")
@@ -167,11 +179,12 @@ model Product {
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relasi
-  category       Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  unit           Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
-  stockMovements StockMovement[]
-  orderItems     OrderItem[]
-  saleItems      SaleItem[]
+  category          Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  unit              Unit               @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  stockMovements    StockMovement[]
+  stockReservations StockReservation[]
+  orderItems        OrderItem[]
+  saleItems         SaleItem[]
 
   @@index([categoryId])
   @@index([unitId])
@@ -185,10 +198,10 @@ model StockMovement {
   id          String            @id @default(cuid())
   productId   String            @map("product_id")
   type        StockMovementType
-  qtyChange   Int               @map("qty_change") // Bisa positif (masuk) atau negatif (keluar)
+  qtyChange   Int               @map("qty_change")
   stockBefore Int               @map("stock_before")
   stockAfter  Int               @map("stock_after")
-  refType     String?           @map("ref_type") // e.g. "ORDER", "SALE", "ADJUSTMENT"
+  refType     String?           @map("ref_type")
   refId       String?           @map("ref_id")
   note        String?
   createdBy   String?           @map("created_by")
@@ -205,20 +218,21 @@ model StockMovement {
 
 model Order {
   id           String      @id @default(cuid())
-  orderNo      String      @unique @map("order_no") // Format: ORD-YYYYMMDD-XXXX
+  orderNo      String      @unique @map("order_no")
   memberId     String      @map("member_id")
   status       OrderStatus @default(DIAJUKAN)
   note         String?
   rejectReason String?     @map("reject_reason")
-  total        Int         @default(0) // Dalam rupiah integer
+  total        Int         @default(0)
   createdBy    String?     @map("created_by")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
 
   // Relasi
-  member     Member      @relation(fields: [memberId], references: [id], onDelete: Restrict)
-  orderItems OrderItem[]
-  sale       Sale?
+  member            Member             @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  orderItems        OrderItem[]
+  stockReservations StockReservation[]
+  sale              Sale?
 
   @@index([memberId, status])
   @@index([status])
@@ -231,7 +245,7 @@ model OrderItem {
   orderId   String   @map("order_id")
   productId String   @map("product_id")
   qty       Int
-  unitPrice Int      @map("unit_price") // Dalam rupiah integer
+  unitPrice Int      @map("unit_price")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -244,13 +258,32 @@ model OrderItem {
   @@map("order_items")
 }
 
+model StockReservation {
+  id           String                 @id @default(cuid())
+  orderId      String                 @map("order_id")
+  productId    String                 @map("product_id")
+  qty          Int
+  remainingQty Int                    @map("remaining_qty")
+  status       StockReservationStatus @default(ACTIVE)
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+
+  // Relasi
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, productId, status])
+  @@index([productId, status])
+  @@map("stock_reservations")
+}
+
 model Sale {
   id            String        @id @default(cuid())
-  saleNo        String        @unique @map("sale_no") // Format: SLS-YYYYMMDD-XXXX
+  saleNo        String        @unique @map("sale_no")
   orderId       String?       @unique @map("order_id")
   memberId      String?       @map("member_id")
-  total         Int           @default(0) // Dalam rupiah integer
-  discount      Int           @default(0) // Dalam rupiah integer
+  total         Int           @default(0)
+  discount      Int           @default(0)
   paymentMethod PaymentMethod @default(TUNAI) @map("payment_method")
   paymentStatus PaymentStatus @default(LUNAS) @map("payment_status")
   status        SaleStatus    @default(COMPLETED)
@@ -276,8 +309,8 @@ model SaleItem {
   saleId    String   @map("sale_id")
   productId String   @map("product_id")
   qty       Int
-  unitPrice Int      @map("unit_price") // Dalam rupiah integer
-  costPrice Int      @map("cost_price") // Snapshot harga beli dalam rupiah integer
+  unitPrice Int      @map("unit_price")
+  costPrice Int      @map("cost_price")
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relasi
@@ -291,7 +324,7 @@ model SaleItem {
 
 model ImportLog {
   id          String       @id @default(cuid())
-  type        String       // e.g. "MEMBERS", "PRODUCTS", "TRANSACTIONS"
+  type        String
   filename    String
   totalRows   Int          @default(0) @map("total_rows")
   successRows Int          @default(0) @map("success_rows")
@@ -311,7 +344,7 @@ model ImportLog {
 
 model ImportTemplate {
   id          String   @id @default(cuid())
-  type        String   // e.g. "MEMBERS", "PRODUCTS", "TRANSACTIONS"
+  type        String
   name        String
   mappingJson Json     @map("mapping_json")
   createdBy   String?  @map("created_by")
@@ -328,8 +361,8 @@ model ImportTemplate {
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String?  @map("user_id")
-  action     String   // e.g. "LOGIN", "CREATE_PRODUCT", "ADJUST_STOCK", "CHANGE_ORDER_STATUS"
-  entity     String   // e.g. "User", "Product", "Order", "Member"
+  action     String
+  entity     String
   entityId   String?  @map("entity_id")
   detailJson Json?    @map("detail_json")
   createdAt  DateTime @default(now()) @map("created_at")
