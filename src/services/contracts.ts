@@ -39,8 +39,6 @@ export interface ReserveStockParams {
   productId: string;
   qty: number;
   orderId: string;
-  /** Optional transaction supplied by caller */
-  tx?: StockTransactionClient;
 }
 
 // ==========================================
@@ -51,8 +49,6 @@ export interface ReleaseStockParams {
   productId: string;
   qty: number;
   orderId: string;
-  /** Optional transaction supplied by caller */
-  tx?: StockTransactionClient;
 }
 
 // ==========================================
@@ -62,8 +58,6 @@ export interface ReleaseStockParams {
 export interface CommitReservationParams {
   orderId: string;
   userId: string; // audit actor
-  /** optional external transaction client */
-  externalTx?: StockTransactionClient;
 }
 
 
