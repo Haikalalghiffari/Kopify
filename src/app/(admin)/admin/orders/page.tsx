@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Prisma, OrderStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { formatRupiah } from "@/lib/money";
+import { formatPaymentLine } from "@/lib/paymentLabels";
 import OrderActions from "@/components/admin/OrderActions";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +55,9 @@ export default async function AdminOrdersPage({
     include: {
       member: true,
       orderItems: { include: { product: true } },
-      sale: { select: { id: true } },
+      sale: {
+        select: { id: true, saleNo: true, paymentMethod: true, paymentStatus: true },
+      },
     },
   });
 
@@ -188,12 +191,17 @@ export default async function AdminOrdersPage({
                 <div className="space-y-2">
                   <OrderActions orderId={o.id} status={o.status} />
                   {o.sale && (
-                    <Link
-                      href={`/admin/sales/${o.sale.id}/receipt`}
-                      className="inline-block text-sm text-emerald-700 underline"
-                    >
-                      Lihat struk
-                    </Link>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-slate-600">
+                        Pembayaran: {formatPaymentLine(o.sale.paymentMethod, o.sale.paymentStatus)}
+                      </p>
+                      <Link
+                        href={`/admin/sales/${o.sale.id}/receipt`}
+                        className="inline-block text-emerald-700 underline"
+                      >
+                        Lihat struk {o.sale.saleNo}
+                      </Link>
+                    </div>
                   )}
                 </div>
                 <span className="font-bold text-emerald-700">{formatRupiah(o.total)}</span>

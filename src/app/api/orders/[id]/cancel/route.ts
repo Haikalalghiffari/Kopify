@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { cancelOrder, OrderError } from "@/services/orderService";
+import { cancelOrder, OrderError, OrderNotFoundError } from "@/services/orderService";
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -14,10 +14,16 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Akun ini bukan akun anggota." }, { status: 403 });
   }
 
+  const userId = session.user.id;
+
   try {
-    await cancelOrder(params.id, { memberId });
+    await cancelOrder(params.id, { memberId, userId });
     return NextResponse.json({ ok: true });
   } catch (e) {
+    if (e instanceof OrderNotFoundError) {
+      // Pesanan milik anggota lain diperlakukan sama seperti tidak ada (AC PRD 6.5: 403/404)
+      return NextResponse.json({ error: e.message }, { status: 404 });
+    }
     if (e instanceof OrderError) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }

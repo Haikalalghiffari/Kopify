@@ -48,7 +48,12 @@ export default async function MemberOrdersPage() {
             <div key={o.id} className="p-4 bg-white border border-slate-200 rounded-2xl space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="font-semibold text-slate-800">{o.orderNo}</p>
+                  <Link
+                    href={`/my-orders/${o.id}`}
+                    className="font-semibold text-slate-800 hover:text-emerald-700 hover:underline"
+                  >
+                    {o.orderNo}
+                  </Link>
                   <p className="text-xs text-slate-500">
                     {new Date(o.createdAt).toLocaleString("id-ID", {
                       timeZone: "Asia/Jakarta",

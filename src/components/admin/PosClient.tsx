@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRupiah } from "@/lib/money";
 
@@ -29,11 +29,14 @@ export default function PosClient({
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discount, setDiscount] = useState("0");
   const [method, setMethod] = useState<Method>("TUNAI");
+  const [payStatusChoice, setPayStatusChoice] = useState<"LUNAS" | "BELUM_LUNAS">("LUNAS");
   const [memberId, setMemberId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [lastSaleId, setLastSaleId] = useState("");
+  const [lastPaymentLabel, setLastPaymentLabel] = useState("");
+  const busyRef = useRef(false);
 
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
@@ -80,11 +83,31 @@ export default function PosClient({
     setCart((prev) => prev.filter((l) => l.productId !== productId));
   }
 
+  // BON selalu belum lunas (sama seperti aturan di server); metode lain mengikuti pilihan kasir
+  const effectivePayStatus: "LUNAS" | "BELUM_LUNAS" =
+    method === "BON" ? "BELUM_LUNAS" : payStatusChoice;
+
   async function pay() {
+    if (busyRef.current || cart.length === 0) return;
+    if (method === "BON" && !memberId) {
+      setError("Pilih anggota untuk pembayaran BON.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Simpan penjualan sebesar ${formatRupiah(total)} dengan metode ${method} (${
+          effectivePayStatus === "LUNAS" ? "Lunas" : "Belum lunas"
+        })?`
+      )
+    ) {
+      return;
+    }
+    busyRef.current = true;
     setLoading(true);
     setError("");
     setSuccess("");
     setLastSaleId("");
+    setLastPaymentLabel("");
     try {
       const res = await fetch("/api/sales", {
         method: "POST",
@@ -94,6 +117,7 @@ export default function PosClient({
           memberId: memberId || null,
           discount: discountNum,
           paymentMethod: method,
+          paymentStatus: effectivePayStatus,
         }),
       });
       const data = await res.json();
@@ -101,17 +125,22 @@ export default function PosClient({
         setError(data.error || "Gagal menyimpan penjualan.");
         return;
       }
-      setSuccess(`Transaksi ${data.saleNo} tersimpan.`);
+      const payStatus =
+        data.paymentStatus === "LUNAS" ? "Lunas" : "Belum lunas";
+      setSuccess(`Transaksi ${data.saleNo} tersimpan (${method} · ${payStatus}).`);
       setLastSaleId(data.id);
+      setLastPaymentLabel(`${method} · ${payStatus}`);
       setCart([]);
       setDiscount("0");
       setMemberId("");
       setMethod("TUNAI");
+      setPayStatusChoice("LUNAS");
       router.refresh(); // muat ulang stok terbaru
     } catch {
       setError("Tidak bisa menghubungi server.");
     } finally {
       setLoading(false);
+      busyRef.current = false;
     }
   }
 
@@ -135,7 +164,7 @@ export default function PosClient({
               <button
                 key={p.id}
                 onClick={() => add(p)}
-                disabled={habis}
+                disabled={habis || loading}
                 className="text-left p-3 bg-white border border-slate-200 rounded-2xl hover:border-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <p className="font-semibold text-slate-800 text-sm">{p.name}</p>
@@ -224,6 +253,19 @@ export default function PosClient({
           </div>
 
           <div>
+            <label className="text-xs text-slate-500">Status bayar</label>
+            <select
+              value={effectivePayStatus}
+              disabled={method === "BON" || loading}
+              onChange={(e) => setPayStatusChoice(e.target.value as "LUNAS" | "BELUM_LUNAS")}
+              className={input}
+            >
+              <option value="LUNAS">Lunas</option>
+              <option value="BELUM_LUNAS">Belum lunas</option>
+            </select>
+          </div>
+
+          <div>
             <label className="text-xs text-slate-500">Diskon (Rp)</label>
             <input
               type="number"
@@ -263,12 +305,25 @@ export default function PosClient({
           <div className="space-y-1">
             <p className="text-sm text-emerald-700">{success}</p>
             {lastSaleId && (
-              <Link
-                href={`/admin/sales/${lastSaleId}/receipt`}
-                className="text-sm text-emerald-700 underline"
-              >
-                Lihat struk
-              </Link>
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href={`/admin/sales/${lastSaleId}/receipt`}
+                  className="text-sm text-emerald-700 underline"
+                >
+                  Lihat struk
+                </Link>
+                <a
+                  href={`/api/sales/${lastSaleId}/pdf`}
+                  className="text-sm text-emerald-700 underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Unduh PDF
+                </a>
+                {lastPaymentLabel && (
+                  <span className="text-xs text-slate-500">({lastPaymentLabel})</span>
+                )}
+              </div>
             )}
           </div>
         )}
