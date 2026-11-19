@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
@@ -53,6 +53,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const role = session?.user?.role;
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    if (role !== "ADMIN" && role !== "KASIR") return;
+    let active = true;
+
+    async function load() {
+      try {
+        const res = await fetch("/api/orders/pending-count", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active) setPendingCount(Number(data.count) || 0);
+      } catch {
+        // abaikan, badge hanya pelengkap
+      }
+    }
+
+    load();
+    const timer = setInterval(load, 30000); // segarkan tiap 30 detik
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [role, pathname]);
+
   const filteredNavItems = navItems.filter(
     (item) => !item.adminOnly || role === "ADMIN"
   );
@@ -116,6 +141,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 >
                   <Icon className="w-4 h-4" />
                   <span>{item.label}</span>
+                  {item.href === "/admin/orders" && pendingCount > 0 && (
+                    <span className="ml-auto min-w-[1.25rem] px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold text-center">
+                      {pendingCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
