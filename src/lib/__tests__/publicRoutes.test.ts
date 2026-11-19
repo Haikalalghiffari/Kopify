@@ -1,20 +1,30 @@
-import { describe, it, expect } from "vitest";
-import { isPublicPath, PUBLIC_EXACT_PATHS } from "../publicRoutes";
+import { describe, it, expect, beforeAll } from "vitest";
+import {
+  isPublicPath,
+  PUBLIC_EXACT_PATHS,
+  PUBLIC_ROOT_FILES,
+  PROTECTED_PATH_PREFIXES,
+} from "../publicRoutes";
 import { isRouteAllowed } from "../rbac";
+import middleware from "@/middleware";
+import { NextRequest } from "next/server";
 
-describe("Public Routes Helper (P1 Regression Test)", () => {
-  describe("isPublicPath - Jalur Publik Wajib (PRD & Master Prompt P1)", () => {
-    it("1. /login dikenali sebagai publik", () => {
+describe("Public Routes Helper & Security Hardening (P1 Review)", () => {
+  describe("1. Jalur Publik Eksplisit (/login & /unauthorized)", () => {
+    it("mengenali /login sebagai jalur publik (dengan dan tanpa trailing slash)", () => {
       expect(isPublicPath("/login")).toBe(true);
       expect(isPublicPath("/login/")).toBe(true);
     });
 
-    it("2. /unauthorized dikenali sebagai publik", () => {
+    it("mengenali /unauthorized sebagai jalur publik (dengan dan tanpa trailing slash)", () => {
       expect(isPublicPath("/unauthorized")).toBe(true);
       expect(isPublicPath("/unauthorized/")).toBe(true);
     });
+  });
 
-    it("3. /api/auth/session dikenali sebagai publik", () => {
+  describe("2. Batasan Ketat Auth.js (/api/auth & /api/auth/*)", () => {
+    it("mengenali endpoint Auth.js yang valid sebagai jalur publik", () => {
+      expect(isPublicPath("/api/auth")).toBe(true);
       expect(isPublicPath("/api/auth/session")).toBe(true);
       expect(isPublicPath("/api/auth/csrf")).toBe(true);
       expect(isPublicPath("/api/auth/signin")).toBe(true);
@@ -22,195 +32,273 @@ describe("Public Routes Helper (P1 Regression Test)", () => {
       expect(isPublicPath("/api/auth/callback/credentials")).toBe(true);
     });
 
-    it("4. Resource /_next/static/* dikenali sebagai publik", () => {
+    it("KEAMANAN (P1 Finding 1): menolak /api/authorization (TIDAK BOLEH dianggap publik)", () => {
+      expect(isPublicPath("/api/authorization")).toBe(false);
+      expect(isPublicPath("/api/auth-custom")).toBe(false);
+      expect(isPublicPath("/api/authenticity")).toBe(false);
+    });
+  });
+
+  describe("3. Batasan Ketat Next.js Assets (/_next & /_next/*)", () => {
+    it("mengenali internal asset Next.js resmi sebagai publik", () => {
+      expect(isPublicPath("/_next")).toBe(true);
       expect(isPublicPath("/_next/static/chunks/main.js")).toBe(true);
       expect(isPublicPath("/_next/static/css/app.css")).toBe(true);
       expect(isPublicPath("/_next/image")).toBe(true);
     });
 
-    it("5. Resource yang memiliki ekstensi tetap mengikuti perilaku sebelumnya", () => {
-      expect(isPublicPath("/favicon.ico")).toBe(true);
-      expect(isPublicPath("/logo.png")).toBe(true);
-      expect(isPublicPath("/robots.txt")).toBe(true);
-      expect(isPublicPath("/sitemap.xml")).toBe(true);
-      expect(isPublicPath("/assets/fonts/inter.woff2")).toBe(true);
+    it("KEAMANAN (P1 Finding 2): menolak /_nextprivate/test (TIDAK BOLEH dianggap publik)", () => {
+      expect(isPublicPath("/_nextprivate/test")).toBe(false);
+      expect(isPublicPath("/_next-custom")).toBe(false);
+      expect(isPublicPath("/_nextprivate")).toBe(false);
+    });
+  });
+
+  describe("4. Proteksi File dengan Titik (.) pada Rute Terproteksi (P1 Finding 3)", () => {
+    it("KEAMANAN: /api/orders/export.csv TIDAK BOLEH menjadi publik meski memiliki ekstensi .csv", () => {
+      expect(isPublicPath("/api/orders/export.csv")).toBe(false);
     });
 
-    it("6. /admin/dashboard bukan jalur publik", () => {
+    it("KEAMANAN: /admin/users.csv TIDAK BOLEH menjadi publik meski memiliki ekstensi .csv", () => {
+      expect(isPublicPath("/admin/users.csv")).toBe(false);
+    });
+
+    it("KEAMANAN: rute terproteksi /admin/*, /api/*, /cart, /my-orders, /profile tidak menjadi publik karena titik", () => {
+      expect(isPublicPath("/admin/products.json")).toBe(false);
+      expect(isPublicPath("/admin/backup.sql")).toBe(false);
+      expect(isPublicPath("/cart/items.json")).toBe(false);
+      expect(isPublicPath("/cart.json")).toBe(false);
+      expect(isPublicPath("/my-orders/rekap.pdf")).toBe(false);
+      expect(isPublicPath("/my-orders.csv")).toBe(false);
+      expect(isPublicPath("/profile/avatar.png")).toBe(false);
+      expect(isPublicPath("/profile.json")).toBe(false);
+      expect(isPublicPath("/catalog/items.xml")).toBe(false);
+      expect(isPublicPath("/api/sales/report.xlsx")).toBe(false);
+      expect(isPublicPath("/api/admin/users.json")).toBe(false);
+    });
+  });
+
+  describe("5. Rute Terproteksi Standar", () => {
+    it("semua rute terproteksi aplikasi tetap bukan jalur publik", () => {
       expect(isPublicPath("/admin/dashboard")).toBe(false);
-    });
-
-    it("7. /admin/orders bukan jalur publik", () => {
       expect(isPublicPath("/admin/orders")).toBe(false);
-    });
-
-    it("8. /cart bukan jalur publik", () => {
-      expect(isPublicPath("/cart")).toBe(false);
-    });
-
-    it("9. /my-orders bukan jalur publik", () => {
-      expect(isPublicPath("/my-orders")).toBe(false);
-    });
-
-    it("Jalur terproteksi lainnya bukan jalur publik", () => {
-      expect(isPublicPath("/")).toBe(false);
-      expect(isPublicPath("/catalog")).toBe(false);
       expect(isPublicPath("/admin/sales")).toBe(false);
       expect(isPublicPath("/admin/stock")).toBe(false);
       expect(isPublicPath("/admin/users")).toBe(false);
       expect(isPublicPath("/admin/audit")).toBe(false);
+      expect(isPublicPath("/cart")).toBe(false);
+      expect(isPublicPath("/my-orders")).toBe(false);
+      expect(isPublicPath("/catalog")).toBe(false);
+      expect(isPublicPath("/profile")).toBe(false);
+      expect(isPublicPath("/")).toBe(false);
       expect(isPublicPath("/api/orders")).toBe(false);
       expect(isPublicPath("/api/sales")).toBe(false);
     });
   });
 
-  describe("PUBLIC_EXACT_PATHS constant", () => {
-    it("hanya memuat /login dan /unauthorized untuk menjaga batasan keamanan", () => {
+  describe("6. Static Assets Publik yang Sah", () => {
+    it("mengenali file root standar publik", () => {
+      expect(isPublicPath("/favicon.ico")).toBe(true);
+      expect(isPublicPath("/robots.txt")).toBe(true);
+      expect(isPublicPath("/sitemap.xml")).toBe(true);
+      expect(isPublicPath("/manifest.json")).toBe(true);
+    });
+
+    it("mengenali file di direktori /public/*", () => {
+      expect(isPublicPath("/public/logo.png")).toBe(true);
+      expect(isPublicPath("/public/images/banner.webp")).toBe(true);
+    });
+
+    it("mengenali web assets statis umum di luar prefix terproteksi", () => {
+      expect(isPublicPath("/logo.png")).toBe(true);
+      expect(isPublicPath("/assets/fonts/inter.woff2")).toBe(true);
+      expect(isPublicPath("/styles/custom.css")).toBe(true);
+    });
+  });
+
+  describe("7. Konstanta Keamanan", () => {
+    it("PUBLIC_EXACT_PATHS hanya memuat /login dan /unauthorized", () => {
       expect(PUBLIC_EXACT_PATHS.has("/login")).toBe(true);
       expect(PUBLIC_EXACT_PATHS.has("/unauthorized")).toBe(true);
       expect(PUBLIC_EXACT_PATHS.size).toBe(2);
     });
+
+    it("PROTECTED_PATH_PREFIXES memuat seluruh prefix penting", () => {
+      expect(PROTECTED_PATH_PREFIXES).toContain("/admin");
+      expect(PROTECTED_PATH_PREFIXES).toContain("/api");
+      expect(PROTECTED_PATH_PREFIXES).toContain("/cart");
+      expect(PROTECTED_PATH_PREFIXES).toContain("/my-orders");
+      expect(PROTECTED_PATH_PREFIXES).toContain("/catalog");
+      expect(PROTECTED_PATH_PREFIXES).toContain("/profile");
+    });
+  });
+});
+
+describe("Actual Next.js Middleware Integration Test (Live withAuth Runner)", () => {
+  beforeAll(() => {
+    process.env.NEXTAUTH_SECRET = "test_secret_key_minimum_32_characters_long_12345";
+    process.env.NEXTAUTH_URL = "http://localhost:3000";
   });
 
-  describe("Middleware Behavior & Regression Test (Redirect Loop Prevention)", () => {
-    /**
-     * Simulasi alur eksekusi middleware Next.js:
-     * Tahap 1: withAuth authorized callback
-     * Tahap 2: middleware function (isPublicPath -> isRouteAllowed)
-     */
-    function simulateMiddleware(
-      pathname: string,
-      token: { role?: string } | null,
-      reqUrl: string = `http://localhost:3000${pathname}`
-    ): {
-      authorized: boolean;
-      responseType: "NEXT" | "REDIRECT" | "FORBIDDEN_403";
-      redirectLocation?: string;
-    } {
-      // 1. Authorized callback:
-      const authorized = isPublicPath(pathname) || !!token;
+  it("ACTUAL MIDDLEWARE: Pengguna anonim membuka /unauthorized diizinkan tanpa redirect loop", async () => {
+    const req = new NextRequest("http://localhost:3000/unauthorized");
+    const res = await (middleware as any)(req, {} as any);
 
-      if (!authorized) {
-        // NextAuth withAuth otomatis me-redirect anonymous user ke signIn (/login)
-        return {
-          authorized: false,
-          responseType: "REDIRECT",
-          redirectLocation: `http://localhost:3000/login?callbackUrl=${encodeURIComponent(reqUrl)}`,
-        };
-      }
+    // Harus NextResponse.next() tanpa redirect location
+    const location = res?.headers?.get("location");
+    expect(location).toBeFalsy();
+  });
 
-      // 2. Middleware function:
-      // PERBAIKAN: Seluruh jalur publik dilewatkan sebelum pemeriksaan RBAC
-      if (isPublicPath(pathname)) {
-        return { authorized: true, responseType: "NEXT" };
-      }
+  it("ACTUAL MIDDLEWARE: Pengguna anonim membuka /login diizinkan", async () => {
+    const req = new NextRequest("http://localhost:3000/login");
+    const res = await (middleware as any)(req, {} as any);
 
-      const role = (token?.role as any) || null;
-      if (!isRouteAllowed(pathname, role)) {
-        if (pathname.startsWith("/api/")) {
-          return { authorized: true, responseType: "FORBIDDEN_403" };
-        }
-        return {
-          authorized: true,
-          responseType: "REDIRECT",
-          redirectLocation: new URL("/unauthorized", reqUrl).toString(),
-        };
-      }
+    const location = res?.headers?.get("location");
+    expect(location).toBeFalsy();
+  });
 
-      return { authorized: true, responseType: "NEXT" };
+  it("ACTUAL MIDDLEWARE: Pengguna anonim membuka /api/auth/session diizinkan", async () => {
+    const req = new NextRequest("http://localhost:3000/api/auth/session");
+    const res = await (middleware as any)(req, {} as any);
+
+    const location = res?.headers?.get("location");
+    expect(location).toBeFalsy();
+  });
+
+  it("ACTUAL MIDDLEWARE: Pengguna anonim membuka /admin/dashboard diarahkan ke login", async () => {
+    const req = new NextRequest("http://localhost:3000/admin/dashboard");
+    const res = await (middleware as any)(req, {} as any);
+
+    const location = res?.headers?.get("location");
+    expect(location).toContain("/login");
+  });
+
+  it("ACTUAL MIDDLEWARE: Pengguna anonim membuka /cart diarahkan ke login", async () => {
+    const req = new NextRequest("http://localhost:3000/cart");
+    const res = await (middleware as any)(req, {} as any);
+
+    const location = res?.headers?.get("location");
+    expect(location).toContain("/login");
+  });
+
+  it("ACTUAL MIDDLEWARE: Pengguna anonim membuka /my-orders diarahkan ke login", async () => {
+    const req = new NextRequest("http://localhost:3000/my-orders");
+    const res = await (middleware as any)(req, {} as any);
+
+    const location = res?.headers?.get("location");
+    expect(location).toContain("/login");
+  });
+
+  it("ACTUAL MIDDLEWARE: Pengguna anonim membuka /admin/users.csv diarahkan ke login (TIDAK BOCOR)", async () => {
+    const req = new NextRequest("http://localhost:3000/admin/users.csv");
+    const res = await (middleware as any)(req, {} as any);
+
+    const location = res?.headers?.get("location");
+    expect(location).toContain("/login");
+  });
+
+  it("ACTUAL MIDDLEWARE: Pengguna anonim membuka /api/orders/export.csv diarahkan ke login (TIDAK BOCOR)", async () => {
+    const req = new NextRequest("http://localhost:3000/api/orders/export.csv");
+    const res = await (middleware as any)(req, {} as any);
+
+    const location = res?.headers?.get("location");
+    expect(location).toContain("/login");
+  });
+});
+
+describe("Middleware RBAC & Authorization Flow Simulation (Security Invariants)", () => {
+  function simulateMiddlewarePipeline(
+    pathname: string,
+    token: { role?: string } | null,
+    reqUrl: string = `http://localhost:3000${pathname}`
+  ) {
+    // 1. Authorized callback:
+    const isAuthorized = isPublicPath(pathname) || !!token;
+    if (!isAuthorized) {
+      return {
+        authorized: false,
+        action: "REDIRECT_TO_SIGNIN",
+        target: `/login?callbackUrl=${encodeURIComponent(reqUrl)}`,
+      };
     }
 
-    it("REGRESSION FIX: Anonim membuka /unauthorized diizinkan tanpa redirect loop", () => {
-      const result = simulateMiddleware("/unauthorized", null);
+    // 2. Middleware function:
+    if (isPublicPath(pathname)) {
+      return { authorized: true, action: "ALLOW_PUBLIC" };
+    }
 
-      expect(result.authorized).toBe(true);
-      expect(result.responseType).toBe("NEXT");
-      expect(result.redirectLocation).toBeUndefined();
-    });
-
-    it("Anonim membuka /login diizinkan", () => {
-      const result = simulateMiddleware("/login", null);
-
-      expect(result.authorized).toBe(true);
-      expect(result.responseType).toBe("NEXT");
-    });
-
-    it("Anonim membuka /api/auth/session diizinkan", () => {
-      const result = simulateMiddleware("/api/auth/session", null);
-
-      expect(result.authorized).toBe(true);
-      expect(result.responseType).toBe("NEXT");
-    });
-
-    it("Anonim membuka /admin/dashboard diarahkan ke login", () => {
-      const result = simulateMiddleware("/admin/dashboard", null);
-
-      expect(result.authorized).toBe(false);
-      expect(result.responseType).toBe("REDIRECT");
-      expect(result.redirectLocation).toContain("/login");
-    });
-
-    it("Anonim membuka /cart diarahkan ke login", () => {
-      const result = simulateMiddleware("/cart", null);
-
-      expect(result.authorized).toBe(false);
-      expect(result.responseType).toBe("REDIRECT");
-      expect(result.redirectLocation).toContain("/login");
-    });
-
-    it("Anggota membuka /admin/dashboard ditolak dan diarahkan ke /unauthorized", () => {
-      const result = simulateMiddleware("/admin/dashboard", { role: "ANGGOTA" });
-
-      expect(result.authorized).toBe(true);
-      expect(result.responseType).toBe("REDIRECT");
-      expect(result.redirectLocation).toBe("http://localhost:3000/unauthorized");
-
-      // Verifikasi follow-up: Saat browser membuka target redirect (/unauthorized),
-      // halaman dimuat dengan status NEXT, TIDAK mengalami redirect berulang ke dirinya sendiri.
-      const followUp = simulateMiddleware("/unauthorized", { role: "ANGGOTA" });
-      expect(followUp.responseType).toBe("NEXT");
-      expect(followUp.redirectLocation).toBeUndefined();
-    });
-
-    it("Kasir membuka /admin/users ditolak dan diarahkan ke /unauthorized", () => {
-      const result = simulateMiddleware("/admin/users", { role: "KASIR" });
-
-      expect(result.responseType).toBe("REDIRECT");
-      expect(result.redirectLocation).toBe("http://localhost:3000/unauthorized");
-    });
-
-    it("Kasir membuka /admin/orders diizinkan", () => {
-      const result = simulateMiddleware("/admin/orders", { role: "KASIR" });
-
-      expect(result.responseType).toBe("NEXT");
-    });
-
-    it("Admin membuka halaman admin (/admin/dashboard) diizinkan", () => {
-      const result = simulateMiddleware("/admin/dashboard", { role: "ADMIN" });
-
-      expect(result.responseType).toBe("NEXT");
-    });
-
-    it("Anggota membuka /my-orders diizinkan", () => {
-      const result = simulateMiddleware("/my-orders", { role: "ANGGOTA" });
-
-      expect(result.responseType).toBe("NEXT");
-    });
-
-    it("Respons 403 untuk API jika request API tidak diizinkan oleh RBAC", () => {
-      // Simulasikan jika ada rute API yang ditolak oleh isRouteAllowed
-      const mockRouteAllowed = (path: string, r: any) => path !== "/api/admin/secret";
-      const path = "/api/admin/secret";
-      const isAllowed = mockRouteAllowed(path, "ANGGOTA");
-
-      let responseType: "NEXT" | "FORBIDDEN_403" = "NEXT";
-      if (!isAllowed) {
-        if (path.startsWith("/api/")) {
-          responseType = "FORBIDDEN_403";
-        }
+    const role = (token?.role as any) || null;
+    if (!isRouteAllowed(pathname, role)) {
+      if (pathname.startsWith("/api/")) {
+        return { authorized: true, action: "FORBIDDEN_403" };
       }
+      return {
+        authorized: true,
+        action: "REDIRECT_TO_UNAUTHORIZED",
+        target: new URL("/unauthorized", reqUrl).toString(),
+      };
+    }
 
-      expect(responseType).toBe("FORBIDDEN_403");
-    });
+    return { authorized: true, action: "ALLOW_AUTHORIZED" };
+  }
+
+  it("Anonim pada /unauthorized: ALLOW_PUBLIC tanpa redirect loop", () => {
+    const res = simulateMiddlewarePipeline("/unauthorized", null);
+    expect(res.action).toBe("ALLOW_PUBLIC");
+  });
+
+  it("Anonim pada /login: ALLOW_PUBLIC", () => {
+    const res = simulateMiddlewarePipeline("/login", null);
+    expect(res.action).toBe("ALLOW_PUBLIC");
+  });
+
+  it("Anonim pada /api/auth/session: ALLOW_PUBLIC", () => {
+    const res = simulateMiddlewarePipeline("/api/auth/session", null);
+    expect(res.action).toBe("ALLOW_PUBLIC");
+  });
+
+  it("Anonim pada /api/authorization: REDIRECT_TO_SIGNIN (TIDAK BOCOR)", () => {
+    const res = simulateMiddlewarePipeline("/api/authorization", null);
+    expect(res.action).toBe("REDIRECT_TO_SIGNIN");
+  });
+
+  it("Anonim pada /_nextprivate/test: REDIRECT_TO_SIGNIN (TIDAK BOCOR)", () => {
+    const res = simulateMiddlewarePipeline("/_nextprivate/test", null);
+    expect(res.action).toBe("REDIRECT_TO_SIGNIN");
+  });
+
+  it("Anonim pada /api/orders/export.csv: REDIRECT_TO_SIGNIN (TIDAK BOCOR)", () => {
+    const res = simulateMiddlewarePipeline("/api/orders/export.csv", null);
+    expect(res.action).toBe("REDIRECT_TO_SIGNIN");
+  });
+
+  it("Anonim pada /admin/users.csv: REDIRECT_TO_SIGNIN (TIDAK BOCOR)", () => {
+    const res = simulateMiddlewarePipeline("/admin/users.csv", null);
+    expect(res.action).toBe("REDIRECT_TO_SIGNIN");
+  });
+
+  it("Anggota pada /admin/dashboard: REDIRECT_TO_UNAUTHORIZED", () => {
+    const res = simulateMiddlewarePipeline("/admin/dashboard", { role: "ANGGOTA" });
+    expect(res.action).toBe("REDIRECT_TO_UNAUTHORIZED");
+  });
+
+  it("Kasir pada /admin/users: REDIRECT_TO_UNAUTHORIZED", () => {
+    const res = simulateMiddlewarePipeline("/admin/users", { role: "KASIR" });
+    expect(res.action).toBe("REDIRECT_TO_UNAUTHORIZED");
+  });
+
+  it("Kasir pada /admin/orders: ALLOW_AUTHORIZED", () => {
+    const res = simulateMiddlewarePipeline("/admin/orders", { role: "KASIR" });
+    expect(res.action).toBe("ALLOW_AUTHORIZED");
+  });
+
+  it("Admin pada /admin/dashboard: ALLOW_AUTHORIZED", () => {
+    const res = simulateMiddlewarePipeline("/admin/dashboard", { role: "ADMIN" });
+    expect(res.action).toBe("ALLOW_AUTHORIZED");
+  });
+
+  it("Anggota pada /my-orders: ALLOW_AUTHORIZED", () => {
+    const res = simulateMiddlewarePipeline("/my-orders", { role: "ANGGOTA" });
+    expect(res.action).toBe("ALLOW_AUTHORIZED");
   });
 });
