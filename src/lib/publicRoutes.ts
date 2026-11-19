@@ -6,26 +6,11 @@ export const PUBLIC_EXACT_PATHS = new Set([
   "/unauthorized",
 ]);
 
-// 2. Public root static files (served from the site root)
-export const PUBLIC_ROOT_FILES = new Set([
-  "/favicon.ico",
-  "/robots.txt",
-  "/sitemap.xml",
-  "/manifest.json",
-]);
+// 2. Public root static files – none exist in the repository
+export const PUBLIC_ROOT_FILES = new Set<string>([]);
 
-// 3. Explicitly allowed public assets (including those under /public and specific root assets).
-// Add any known static asset paths here. The project currently does not have a physical public folder,
-// but tests expect certain assets to be publicly accessible.
-export const PUBLIC_ASSET_PATHS = new Set<string>([
-  // Root‑level assets used in tests
-  "/logo.png",
-  "/assets/fonts/inter.woff2",
-  "/styles/custom.css",
-  // Assets under a hypothetical /public folder
-  "/public/logo.png",
-  "/public/images/banner.webp",
-]);
+// 3. Explicitly allowed public assets – none exist in the repository
+export const PUBLIC_ASSET_PATHS = new Set<string>([]);
 
 // 4. Protected path prefixes – never public, even if they have an extension.
 export const PROTECTED_PATH_PREFIXES = [
@@ -40,14 +25,14 @@ export const PROTECTED_PATH_PREFIXES = [
 /**
  * Determines whether a given pathname should be considered public (no auth required).
  *
- * Security rules:
- * 1. Exact matches from PUBLIC_EXACT_PATHS.
- * 2. Auth.js endpoints: only "/api/auth" and any sub‑path under it.
- * 3. Next.js internal assets: only "/_next", "/_next/static/*" and "/_next/image/*".
- * 4. Assets explicitly listed in PUBLIC_ASSET_PATHS (served from root or under /public).
- * 5. Root static files listed in PUBLIC_ROOT_FILES.
- * 6. Any path that starts with a prefix from PROTECTED_PATH_PREFIXES is never public.
- * 7. No global extension allow‑list – everything else is private.
+ * Security rules (order matters):
+ * 1️⃣ Exact matches from PUBLIC_EXACT_PATHS.
+ * 2️⃣ Auth.js endpoints: only "/api/auth" and any sub‑path under it.
+ * 3️⃣ Protected prefixes are evaluated **before** any asset allow‑list.
+ * 4️⃣ Next.js internal assets: only "/_next/static/*" and the exact "/_next/image".
+ * 5️⃣ Explicit public assets listed in PUBLIC_ASSET_PATHS.
+ * 6️⃣ Root static files listed in PUBLIC_ROOT_FILES.
+ * 7️⃣ Everything else is private.
  */
 export function isPublicPath(pathname: string): boolean {
   // Normalise trailing slash ("/login/" -> "/login")
@@ -56,36 +41,13 @@ export function isPublicPath(pathname: string): boolean {
       ? pathname.slice(0, -1)
       : pathname;
 
-  // 1. Exact public routes
-  if (PUBLIC_EXACT_PATHS.has(normalized)) {
-    return true;
-  }
+  // 1️⃣ Exact public routes
+  if (PUBLIC_EXACT_PATHS.has(normalized)) return true;
 
-  // 2. Auth.js endpoints
-  if (normalized === '/api/auth' || normalized.startsWith('/api/auth/')) {
-    return true;
-  }
+  // 2️⃣ Auth.js endpoints
+  if (normalized === '/api/auth' || normalized.startsWith('/api/auth/')) return true;
 
-  // 3. Next.js internal assets
-  if (
-    normalized === '/_next' ||
-    normalized.startsWith('/_next/static/') ||
-    normalized.startsWith('/_next/image')
-  ) {
-    return true;
-  }
-
-  // 4. Explicit public assets (including /public/* paths)
-  if (PUBLIC_ASSET_PATHS.has(normalized)) {
-    return true;
-  }
-
-  // 5. Root static files
-  if (PUBLIC_ROOT_FILES.has(normalized)) {
-    return true;
-  }
-
-  // 6. Protected prefixes – always private
+  // 3️⃣ Protected prefixes – must be checked before any asset checks
   for (const prefix of PROTECTED_PATH_PREFIXES) {
     if (
       normalized === prefix ||
@@ -96,6 +58,20 @@ export function isPublicPath(pathname: string): boolean {
     }
   }
 
-  // 7. All other paths are private
+  // 4️⃣ Next.js internal assets
+  if (
+    normalized.startsWith('/_next/static/') ||
+    normalized === '/_next/image'
+  ) {
+    return true;
+  }
+
+  // 5️⃣ Explicit public assets (none at the moment)
+  if (PUBLIC_ASSET_PATHS.has(normalized)) return true;
+
+  // 6️⃣ Root static files (none at the moment)
+  if (PUBLIC_ROOT_FILES.has(normalized)) return true;
+
+  // 7️⃣ All other paths are private
   return false;
 }
