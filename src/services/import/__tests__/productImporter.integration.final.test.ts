@@ -18,23 +18,49 @@ const QA_UNIT = "QA-P3-Master-Kg";
 const ADMIN_USERNAME = "qa-p3-product-admin";
 
 const { testDbUrl, ENABLED } = vi.hoisted(() => {
+  const enabled = process.env.P3_PRODUCT_DB_FINAL === "1";
+
+  // Test tidak aktif secara default.
+  // Jangan validasi DATABASE_URL CI jika suite memang tidak dijalankan.
+  if (!enabled) {
+    return {
+      testDbUrl:
+        "postgresql://disabled:disabled@localhost:5433/koperasi_test_db?schema=public",
+      ENABLED: false,
+    };
+  }
+
+  // Validasi hanya berjalan ketika test diaktifkan secara eksplisit.
   const url =
     process.env.TEST_DATABASE_URL ||
-    process.env.DATABASE_URL?.replace(/\/koperasi_db(\?|$)/, "/koperasi_test_db$1") ||
+    process.env.DATABASE_URL?.replace(
+      /\/koperasi_db(\?|$)/,
+      "/koperasi_test_db$1"
+    ) ||
     "postgresql://koperasi_user:koperasi_pass@localhost:5433/koperasi_test_db?schema=public";
 
   const parsedUrl = new URL(url);
-  const dbName = parsedUrl.pathname.replace(/^\//, "").split("?")[0].toLowerCase();
-  if (parsedUrl.hostname !== "localhost" || parsedUrl.port !== "5433") {
+  const dbName = parsedUrl.pathname
+    .replace(/^\//, "")
+    .split("?")[0]
+    .toLowerCase();
+
+  if (
+    parsedUrl.hostname !== "localhost" ||
+    parsedUrl.port !== "5433"
+  ) {
     throw new Error("Hanya localhost:5433 diizinkan.");
   }
+
   if (dbName !== "koperasi_test_db") {
-    throw new Error(`Hanya koperasi_test_db, terdeteksi "${dbName}".`);
+    throw new Error(
+      `Hanya koperasi_test_db, terdeteksi "${dbName}".`
+    );
   }
 
   return {
     testDbUrl: url,
-    ENABLED: process.env.P3_PRODUCT_DB_FINAL === "1",
+    ENABLED: true,
   };
 });
 
